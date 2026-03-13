@@ -21,10 +21,12 @@ jobs:
       - name: Check for changes
         id: diff
         run: |
-          if git diff --quiet; then
+          git add -A
+          if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            git reset HEAD
           fi
 
       - name: Create PR if changed

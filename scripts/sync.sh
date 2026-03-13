@@ -1,42 +1,54 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Syncs Google API protos from googleapis/googleapis upstream.
-# Designed to be run by CI (sync-upstream.yml) or manually.
+# Syncs Google API core protos from googleapis/googleapis upstream.
+# Only syncs the commonly-needed protos, not every GCP service definition.
 
-UPSTREAM_REPO="https://github.com/googleapis/googleapis.git"
+UPSTREAM="https://raw.githubusercontent.com/googleapis/googleapis/master"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-TEMP_DIR=$(mktemp -d)
 
-cleanup() { rm -rf "${TEMP_DIR}"; }
-trap cleanup EXIT
+# Core google/api protos that services commonly import.
+API_PROTOS=(
+    annotations.proto
+    client.proto
+    field_behavior.proto
+    field_info.proto
+    http.proto
+    httpbody.proto
+    launch_stage.proto
+    resource.proto
+    routing.proto
+    visibility.proto
+)
 
-echo "==> Shallow cloning googleapis (sparse checkout)..."
-cd "${TEMP_DIR}"
-git init -q
-git remote add origin "${UPSTREAM_REPO}"
-git config core.sparseCheckout true
+# Core google/rpc protos.
+RPC_PROTOS=(
+    code.proto
+    error_details.proto
+    status.proto
+)
 
-# Only fetch the directories we care about.
-cat > .git/info/sparse-checkout <<'PATHS'
-google/api/
-google/rpc/
-PATHS
+echo "==> Syncing google/api/ core protos..."
+mkdir -p "${REPO_ROOT}/google/api"
+for f in "${API_PROTOS[@]}"; do
+    if curl -sfL "${UPSTREAM}/google/api/${f}" -o "${REPO_ROOT}/google/api/${f}"; then
+        echo "  ✓ ${f}"
+    else
+        echo "  - ${f} (not found upstream, skipping)"
+        rm -f "${REPO_ROOT}/google/api/${f}"
+    fi
+done
 
-git pull --depth=1 origin master -q
+echo "==> Syncing google/rpc/ core protos..."
+mkdir -p "${REPO_ROOT}/google/rpc"
+for f in "${RPC_PROTOS[@]}"; do
+    if curl -sfL "${UPSTREAM}/google/rpc/${f}" -o "${REPO_ROOT}/google/rpc/${f}"; then
+        echo "  ✓ ${f}"
+    else
+        echo "  - ${f} (not found upstream, skipping)"
+        rm -f "${REPO_ROOT}/google/rpc/${f}"
+    fi
+done
 
-echo "==> Syncing google/api/..."
-rm -rf "${REPO_ROOT}/google/api"
-cp -r "${TEMP_DIR}/google/api" "${REPO_ROOT}/google/api"
-
-echo "==> Syncing google/rpc/..."
-rm -rf "${REPO_ROOT}/google/rpc"
-cp -r "${TEMP_DIR}/google/rpc" "${REPO_ROOT}/google/rpc"
-
-echo "==> Done. Files synced to ${REPO_ROOT}"
-echo ""
-echo "Changed files:"
-cd "${REPO_ROOT}"
-git diff --stat || true
-git ls-files --others --exclude-standard || true
+echo "==> Done."
