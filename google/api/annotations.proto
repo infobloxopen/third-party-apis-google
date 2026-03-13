@@ -29,4 +29,3 @@ extend google.protobuf.MethodOptions {
   // See `HttpRule`.
   HttpRule http = 72295728;
 }
-# Upstream sync marker: 20260313T185725Z
