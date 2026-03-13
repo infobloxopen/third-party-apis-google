@@ -18,6 +18,8 @@ jobs:
       branch: ${{ steps.pr.outputs.branch }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for tag listing
 
       - name: Sync from googleapis/googleapis
         run: ./scripts/sync.sh
@@ -78,7 +80,7 @@ jobs:
           fi
           echo "All proto files validated successfully"
 
-  merge:
+  merge-and-tag:
     needs: [sync, validate]
     if: needs.sync.outputs.changed == 'true'
     runs-on: ubuntu-latest
@@ -87,5 +89,47 @@ jobs:
         run: |
           PR_URL="${{ needs.sync.outputs.pr_url }}"
           gh pr merge "${PR_URL}" --squash --admin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0  # Need all tags
+
+      - name: Pull latest after merge
+        run: git pull origin main
+
+      - name: Bump release tags
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # For each API module, find the latest tag and bump the patch version.
+          MODULES="proto/google/api/v1 proto/google/rpc/v1"
+
+          for module in $MODULES; do
+            # Find latest tag for this module, sorted by semver.
+            LATEST=$(git tag -l "${module}/v*" --sort=-v:refname | head -1)
+
+            if [ -z "$LATEST" ]; then
+              # No existing tag — start at v1.0.0
+              NEW_TAG="${module}/v1.0.0"
+            else
+              # Extract version and bump patch.
+              VERSION="${LATEST##*/}"       # e.g. "v1.2.3"
+              MAJOR="${VERSION%%.*}"         # e.g. "v1"
+              REST="${VERSION#*.}"           # e.g. "2.3"
+              MINOR="${REST%%.*}"            # e.g. "2"
+              PATCH="${REST#*.}"             # e.g. "3"
+              NEW_PATCH=$((PATCH + 1))
+              NEW_TAG="${module}/${MAJOR}.${MINOR}.${NEW_PATCH}"
+            fi
+
+            echo "Tagging ${NEW_TAG} (was: ${LATEST:-none})"
+            git tag "${NEW_TAG}"
+          done
+
+          git push origin --tags
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
