@@ -144,6 +144,9 @@ jobs:
 
       - name: Generate release manifests and open PR to apis
         run: |
+          # Configure git to use the App token for cloning/pushing to apis
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+
           MODULES="proto/google/api/v1 proto/google/rpc/v1"
           SOURCE_REPO="github.com/infobloxopen/third-party-apis-google"
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
