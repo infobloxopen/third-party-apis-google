@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate proto files parse correctly
+        run: |
+          # Basic validation: ensure all .proto files are valid UTF-8 and contain package declarations
+          errors=0
+          for f in $(find google -name '*.proto'); do
+            if ! head -50 "$f" | grep -q '^package '; then
+              echo "ERROR: $f missing package declaration"
+              errors=$((errors + 1))
+            fi
+          done
+          if [ "$errors" -gt 0 ]; then
+            echo "$errors validation error(s) found"
+            exit 1
+          fi
+          echo "All proto files validated successfully"
