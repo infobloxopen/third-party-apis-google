@@ -12,6 +12,9 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+      pr_url: ${{ steps.pr.outputs.pr_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,27 +32,66 @@ jobs:
             git reset HEAD
           fi
 
-      - name: Create PR if changed
+      - name: Create PR
+        id: pr
         if: steps.diff.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          BRANCH="sync/googleapis-$(date +%Y%m%d)"
+          BRANCH="sync/googleapis-$(date +%Y%m%d-%H%M)"
           git checkout -b "${BRANCH}"
           git add -A
           git commit -m "Sync Google API protos from upstream googleapis"
           git push origin "${BRANCH}"
           PR_URL=$(gh pr create \
             --title "Sync Google API protos from upstream" \
-            --body "$(cat <<'EOF'
-          Automated sync from [googleapis/googleapis](https://github.com/googleapis/googleapis).
-
-          This PR will auto-merge after CI passes.
-          EOF
-          )" \
+            --body "Automated sync from [googleapis/googleapis](https://github.com/googleapis/googleapis)." \
             --base main \
             --head "${BRANCH}")
-          echo "Created PR: ${PR_URL}"
-          gh pr merge "${PR_URL}" --auto --squash
+          echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  validate:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.pr_url && format('refs/pull/{0}/head', needs.sync.outputs.pr_url) || '' }}
+
+      - name: Checkout PR branch
+        run: |
+          PR_URL="${{ needs.sync.outputs.pr_url }}"
+          PR_NUM=$(echo "$PR_URL" | grep -o '[0-9]*$')
+          gh pr checkout "$PR_NUM"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate proto files
+        run: |
+          errors=0
+          for f in $(find google -name '*.proto'); do
+            if ! head -50 "$f" | grep -q '^package '; then
+              echo "ERROR: $f missing package declaration"
+              errors=$((errors + 1))
+            fi
+          done
+          if [ "$errors" -gt 0 ]; then
+            echo "$errors validation error(s) found"
+            exit 1
+          fi
+          echo "All proto files validated successfully"
+
+  merge:
+    needs: [sync, validate]
+    if: needs.sync.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-merge PR
+        run: |
+          PR_URL="${{ needs.sync.outputs.pr_url }}"
+          gh pr merge "${PR_URL}" --squash --admin
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
