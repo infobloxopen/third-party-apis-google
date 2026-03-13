@@ -17,18 +17,9 @@ jobs:
       pr_url: ${{ steps.pr.outputs.pr_url }}
       branch: ${{ steps.pr.outputs.branch }}
     steps:
-      - name: Generate App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APX_APP_ID }}
-          private-key: ${{ secrets.APX_APP_PRIVATE_KEY }}
-          owner: infobloxopen
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Sync from googleapis/googleapis
         run: ./scripts/sync.sh
@@ -48,8 +39,8 @@ jobs:
         id: pr
         if: steps.diff.outputs.changed == 'true'
         run: |
-          git config user.name "apx-infobloxopen-user[bot]"
-          git config user.email "apx-infobloxopen-user[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="sync/googleapis-$(date +%Y%m%d-%H%M)"
           git checkout -b "${BRANCH}"
           git add -A
@@ -63,7 +54,7 @@ jobs:
           echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   validate:
     needs: sync
@@ -94,32 +85,23 @@ jobs:
     if: needs.sync.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Generate App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APX_APP_ID }}
-          private-key: ${{ secrets.APX_APP_PRIVATE_KEY }}
-          owner: infobloxopen
-
       - name: Auto-merge PR
         run: gh pr merge "${{ needs.sync.outputs.pr_url }}" --squash --admin
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Pull latest after merge
         run: git pull origin main
 
       - name: Bump release tags
         run: |
-          git config user.name "apx-infobloxopen-user[bot]"
-          git config user.email "apx-infobloxopen-user[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           MODULES="proto/google/api/v1 proto/google/rpc/v1"
 
@@ -146,14 +128,14 @@ jobs:
     needs: merge-and-tag
     runs-on: ubuntu-latest
     steps:
+      # App token needed for cross-repo PR to infobloxopen/apis
       - name: Generate App Token
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.APX_APP_ID }}
           private-key: ${{ secrets.APX_APP_PRIVATE_KEY }}
-          owner: infobloxopen
-          repositories: third-party-apis-google,apis
+          repositories: apis
 
       - uses: actions/checkout@v4
         with:
@@ -162,9 +144,6 @@ jobs:
 
       - name: Generate release manifests and open PR to apis
         run: |
-          git config user.name "apx-infobloxopen-user[bot]"
-          git config user.email "apx-infobloxopen-user[bot]@users.noreply.github.com"
-
           MODULES="proto/google/api/v1 proto/google/rpc/v1"
           SOURCE_REPO="github.com/infobloxopen/third-party-apis-google"
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -184,8 +163,8 @@ jobs:
 
           gh repo clone infobloxopen/apis /tmp/apis -- --depth=1
           cd /tmp/apis
-          git config user.name "apx-infobloxopen-user[bot]"
-          git config user.email "apx-infobloxopen-user[bot]@users.noreply.github.com"
+          git config user.name "apx-apis-infobloxopen[bot]"
+          git config user.email "apx-apis-infobloxopen[bot]@users.noreply.github.com"
 
           BRANCH="release/google-apis-$(date +%Y%m%d-%H%M)"
           git checkout -b "${BRANCH}"
