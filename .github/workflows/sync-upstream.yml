@@ -32,6 +32,8 @@ jobs:
       - name: Create PR if changed
         if: steps.diff.outputs.changed == 'true'
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="sync/googleapis-$(date +%Y%m%d)"
           git checkout -b "${BRANCH}"
           git add -A
