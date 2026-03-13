@@ -15,6 +15,7 @@ jobs:
     outputs:
       changed: ${{ steps.diff.outputs.changed }}
       pr_url: ${{ steps.pr.outputs.pr_url }}
+      branch: ${{ steps.pr.outputs.branch }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +50,7 @@ jobs:
             --base main \
             --head "${BRANCH}")
           echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -59,15 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.sync.outputs.pr_url && format('refs/pull/{0}/head', needs.sync.outputs.pr_url) || '' }}
-
-      - name: Checkout PR branch
-        run: |
-          PR_URL="${{ needs.sync.outputs.pr_url }}"
-          PR_NUM=$(echo "$PR_URL" | grep -o '[0-9]*$')
-          gh pr checkout "$PR_NUM"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ needs.sync.outputs.branch }}
 
       - name: Validate proto files
         run: |
