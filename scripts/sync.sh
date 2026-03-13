@@ -2,22 +2,41 @@
 set -euo pipefail
 
 # Syncs Google API protos from googleapis/googleapis upstream.
-# Run this when you want to pull in new upstream changes.
+# Designed to be run by CI (sync-upstream.yml) or manually.
 
-UPSTREAM="https://raw.githubusercontent.com/googleapis/googleapis/master"
+UPSTREAM_REPO="https://github.com/googleapis/googleapis.git"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+TEMP_DIR=$(mktemp -d)
 
-echo "Syncing google/api/ protos..."
-for f in annotations.proto http.proto client.proto field_behavior.proto resource.proto launch_stage.proto; do
-    echo "  ${f}"
-    curl -sfL "${UPSTREAM}/google/api/${f}" -o "${REPO_ROOT}/google/api/${f}" 2>/dev/null || echo "  (not found, skipping)"
-done
+cleanup() { rm -rf "${TEMP_DIR}"; }
+trap cleanup EXIT
 
-echo "Syncing google/rpc/ protos..."
-for f in status.proto error_details.proto code.proto; do
-    echo "  ${f}"
-    curl -sfL "${UPSTREAM}/google/rpc/${f}" -o "${REPO_ROOT}/google/rpc/${f}" 2>/dev/null || echo "  (not found, skipping)"
-done
+echo "==> Shallow cloning googleapis (sparse checkout)..."
+cd "${TEMP_DIR}"
+git init -q
+git remote add origin "${UPSTREAM_REPO}"
+git config core.sparseCheckout true
 
-echo "Done. Review changes with 'git diff' and commit if satisfied."
+# Only fetch the directories we care about.
+cat > .git/info/sparse-checkout <<'PATHS'
+google/api/
+google/rpc/
+PATHS
+
+git pull --depth=1 origin master -q
+
+echo "==> Syncing google/api/..."
+rm -rf "${REPO_ROOT}/google/api"
+cp -r "${TEMP_DIR}/google/api" "${REPO_ROOT}/google/api"
+
+echo "==> Syncing google/rpc/..."
+rm -rf "${REPO_ROOT}/google/rpc"
+cp -r "${TEMP_DIR}/google/rpc" "${REPO_ROOT}/google/rpc"
+
+echo "==> Done. Files synced to ${REPO_ROOT}"
+echo ""
+echo "Changed files:"
+cd "${REPO_ROOT}"
+git diff --stat || true
+git ls-files --others --exclude-standard || true

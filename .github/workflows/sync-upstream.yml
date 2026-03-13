@@ -1,0 +1,56 @@
+name: Sync upstream Google APIs
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Monday at 06:00 UTC
+  workflow_dispatch:       # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync from googleapis/googleapis
+        run: ./scripts/sync.sh
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR if changed
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          BRANCH="sync/googleapis-$(date +%Y%m%d)"
+          git checkout -b "${BRANCH}"
+          git add -A
+          git commit -m "Sync Google API protos from upstream googleapis"
+          git push origin "${BRANCH}"
+          gh pr create \
+            --title "Sync Google API protos from upstream" \
+            --body "$(cat <<'EOF'
+          Automated sync from [googleapis/googleapis](https://github.com/googleapis/googleapis).
+
+          Review the diff to ensure no breaking changes before merging.
+          After merging, create a new release tag if the changes are significant:
+
+          ```bash
+          git tag proto/google/api/v1/v<next-version>
+          git tag proto/google/rpc/v1/v<next-version>
+          git push origin --tags
+          ```
+          EOF
+          )" \
+            --base main \
+            --head "${BRANCH}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
